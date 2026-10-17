@@ -45,7 +45,7 @@ function login(){
   if(role=='admin')$('#nw').onclick=signup;
   $('#rs').onclick=()=>{role='student';login()};$('#ra').onclick=()=>{role='admin';login()};
   const go=async()=>{try{S=await api('login',{body:{username:$('#u').value,password:$('#p').value,role}});localStorage.setItem('att',JSON.stringify(S));start()}catch(e){$('#e').textContent=e.message}};
-  $('#go').onclick=go;$('#p').onkeydown=e=>e.key=='Enter'&&go()}
+  $('#go').onclick=go;$('#p').onkeydown=e=>{if(e.key=='Enter')go()}}
 
 function signup(){
   app.innerHTML=`<div class="cd"><h1>New admin sign-up</h1><div class="mu">Enter the code given to you by the owner admin.</div>
