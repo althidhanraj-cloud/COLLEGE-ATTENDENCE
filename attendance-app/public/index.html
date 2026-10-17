@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="manifest.json"><meta name="theme-color" content="#2563eb">
+<title>Attendance</title>
+<style>
+:root{--bg:#f4f6f9;--cd:#fff;--tx:#1b1f24;--mu:#667085;--ac:#2563eb;--ok:#15803d;--bad:#b91c1c;--wn:#b45309;--bd:#e4e7ec}
+@media(prefers-color-scheme:dark){:root{--bg:#111418;--cd:#1b2027;--tx:#eef0f3;--mu:#98a2b3;--bd:#2c333d;--ac:#5b8def;--ok:#4ade80;--bad:#f87171;--wn:#fbbf24}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+main{max-width:760px;margin:0 auto;padding:14px}
+.cd{background:var(--cd);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:12px}
+h1{font-size:1.25rem;margin:4px 0 10px}h2{font-size:1rem;margin:0 0 8px}
+label{display:block;font-size:.85rem;color:var(--mu);margin:8px 0 3px}
+input,textarea,select{width:100%;padding:10px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit}
+textarea{min-height:110px;font-family:ui-monospace,monospace;font-size:.85rem}
+button{padding:10px 14px;border:0;border-radius:8px;background:var(--ac);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.g{background:transparent;color:var(--ac);border:1px solid var(--bd)}button.r{background:var(--bad)}button:disabled{opacity:.5}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.row>*{flex:1}.row>button{flex:0 0 auto}
+.tabs{display:flex;gap:6px;margin-bottom:12px;overflow-x:auto}.tabs button{background:var(--cd);color:var(--tx);border:1px solid var(--bd);white-space:nowrap}.tabs button.on{background:var(--ac);color:#fff}
+.m{margin-top:10px}.ok{color:var(--ok)}.bad{color:var(--bad)}.wn{color:var(--wn)}.mu{color:var(--mu);font-size:.85rem}
+.t{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:.88rem}td,th{text-align:left;padding:6px 5px;border-bottom:1px solid var(--bd);white-space:nowrap}
+.big{width:100%;padding:18px;font-size:1.1rem}
+.top{display:flex;justify-content:space-between;align-items:center}
+</style></head><body><main id="app"></main>
+<script>
+const $=s=>document.querySelector(s),app=$('#app');
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let S=JSON.parse(localStorage.getItem('att')||'null'),role='student',timer=null;
+const DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+async function api(p,o={}){
+  const r=await fetch('/api/'+p,{method:o.method||(o.body?'POST':'GET'),headers:{'Content-Type':'application/json',...(S?{Authorization:'Bearer '+S.token}:{})},body:o.body?JSON.stringify(o.body):undefined});
+  const j=await r.json().catch(()=>({}));
+  if(r.status===401&&S&&p!=='login'){logout(true)}
+  if(!r.ok){const e=new Error(j.error||'Error');e.data=j;throw e}return j}
+function logout(q){clearInterval(timer);if(!q)api('logout',{method:'POST',body:{}}).catch(()=>{});S=null;localStorage.removeItem('att');login()}
+const pos=()=>new Promise((res,rej)=>{if(!navigator.geolocation)return rej(new Error('GPS not supported.'));navigator.geolocation.getCurrentPosition(res,e=>rej(new Error(e.code===1?'Location is OFF or denied. Turn on location for this site.':'Could not get location.')),{enableHighAccuracy:true,timeout:20000,maximumAge:0})});
+const fmt=t=>{if(!t)return'-';const[h,m]=t.split(':');return((+h%12)||12)+':'+m+(+h<12?' AM':' PM')};
+
+function login(){
+  app.innerHTML=`<div class="cd"><h1>Avanthi College Attendance</h1>
+  <div class="tabs"><button id="rs" class="${role=='student'?'on':''}">Student login</button><button id="ra" class="${role=='admin'?'on':''}">Admin login</button></div>
+  <label>${role=='admin'?'Admin ID':'Roll number'}</label><input id="u" autocomplete="username">
+  <label>Password</label><input id="p" type="password" autocomplete="current-password">
+  <div class="m"><button id="go" style="width:100%">Login</button></div><div class="m bad" id="e"></div>${role=='admin'?'<div class="m"><button class="g" id="nw" style="width:100%">New admin? Sign up with code</button></div>':''}</div>`;
+  if(role=='admin')$('#nw').onclick=signup;
+  $('#rs').onclick=()=>{role='student';login()};$('#ra').onclick=()=>{role='admin';login()};
+  const go=async()=>{try{S=await api('login',{body:{username:$('#u').value,password:$('#p').value,role}});localStorage.setItem('att',JSON.stringify(S));start()}catch(e){$('#e').textContent=e.message}};
+  $('#go').onclick=go;$('#p').onkeydown=e=>e.key=='Enter'&&go()}
+
+function signup(){
+  app.innerHTML=`<div class="cd"><h1>New admin sign-up</h1><div class="mu">Enter the code given to you by the owner admin.</div>
+  <label>Code</label><input id="c" autocapitalize="characters"><label>Your name</label><input id="n"><label>Choose an admin ID</label><input id="u"><label>Password (min 6)</label><input id="p" type="password">
+  <div class="m row"><button id="go">Create admin account</button><button class="g" id="bk">Back</button></div><div class="m" id="e"></div></div>`;
+  $('#bk').onclick=()=>{role='admin';login()};
+  $('#go').onclick=async()=>{try{await api('admin/register',{body:{code:$('#c').value,name:$('#n').value,username:$('#u').value,password:$('#p').value}});alert('Account created. Please log in.');role='admin';login()}catch(e){$('#e').innerHTML=`<span class="bad">${esc(e.message)}</span>`}}}
+
+/* ---------------- student ---------------- */
+async function student(){
+  const st=await api('status');
+  app.innerHTML=`<div class="cd"><div class="top"><div><h1>${esc(st.name)}</h1><div class="mu">Roll no: ${esc(st.roll)}</div></div><button class="g" id="lo">Logout</button></div></div>
+  <div class="cd"><h2>Today ${esc(st.date)} · ${fmt(st.time)}</h2>
+  <div>Morning: <b class="${st.today.morning?'ok':'mu'}">${st.today.morning?'Present '+fmt(st.today.morning):'Not marked'}</b></div>
+  <div>Afternoon: <b class="${st.today.afternoon?'ok':'mu'}">${st.today.afternoon?'Present '+fmt(st.today.afternoon):'Not marked'}</b></div>
+  <div class="m"><button class="big" id="mk" ${st.isOpen&&st.locationSet?'':'disabled'}>Mark ${st.session} attendance</button></div>
+  <div class="m" id="msg">${!st.locationSet?'<span class="bad">College location not set by admin.</span>':st.isOpen?'':`<span class="bad">Attendance is open ${fmt(st.open)} to ${fmt(st.cutoff)} only.</span>`}</div>
+  <div class="mu m">Keep location ON and this page open during class. Your location is checked automatically every 5 minutes until ${fmt(st.cutoff)}, and nothing is recorded after that.</div></div>
+  <div class="cd"><h2>My attendance (last 30 days)</h2><div id="rep" class="t"></div></div>`;
+  $('#lo').onclick=()=>logout();
+  $('#mk').onclick=async()=>{const b=$('#mk');b.disabled=true;$('#msg').innerHTML='Checking your location...';
+    try{const p=await pos();const r=await api('checkin',{body:{lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy,kind:'mark'}});$('#msg').innerHTML=`<span class="ok">${r.session} attendance marked (${r.dist} m from college).</span>`;setTimeout(student,1200)}
+    catch(e){$('#msg').innerHTML=`<span class="bad">${esc(e.message)}</span>`;b.disabled=false}};
+  const rp=await api('my/report');showSummary($('#rep'),rp);
+  clearInterval(timer);
+  const ping=async()=>{try{const p=await pos();await api('checkin',{body:{lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy,kind:'ping'}})}catch(e){if(e.data&&e.data.closed)clearInterval(timer)}};
+  if(st.isOpen&&st.locationSet){ping();timer=setInterval(ping,300000)}
+}
+function showSummary(el,rp){const s=rp.summary;
+  el.innerHTML=`<div>Days present: <b>${s.daysPresent}</b> of ${s.workingDays} · Morning: <b>${s.morning}</b> · Afternoon: <b>${s.afternoon}</b> · Periods: <b>${s.periodsAttended}</b> of ${s.periodsTotal}</div>
+  <table class="m"><tr><th>Date</th><th>Morning</th><th>Afternoon</th><th>Periods present</th></tr>${rp.days.slice().reverse().map(d=>`<tr><td>${d.date}</td><td class="${d.morning?'ok':'bad'}">${d.morning?'Present':'Absent'}</td><td class="${d.afternoon?'ok':'bad'}">${d.afternoon?'Present':'Absent'}</td><td>${d.periods.filter(p=>p.status=='present').length}/${d.periods.length}</td></tr>`).join('')}</table>`}
+
+/* ---------------- admin ---------------- */
+let tab='students';
+function adminShell(){
+  app.innerHTML=`<div class="cd top"><h1>Admin</h1><button class="g" id="lo">Logout</button></div>
+  <div class="tabs">${['students','timetable','settings',...(S.owner?['admins']:[])].map(t=>`<button data-t="${t}" class="${tab==t?'on':''}">${t[0].toUpperCase()+t.slice(1)}</button>`).join('')}</div><div id="pane"></div>`;
+  $('#lo').onclick=()=>logout();
+  document.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{tab=b.dataset.t;adminShell()});
+  ({students:aStudents,timetable:aTimetable,settings:aSettings,admins:aAdmins})[tab]()}
+async function aStudents(){
+  const list=await api('admin/students');
+  $('#pane').innerHTML=`<div class="cd"><h2>Create student accounts</h2><div class="mu">One per line: rollnumber,name,password</div>
+  <textarea id="bulk" placeholder="21A91A0501,Student A,pass123"></textarea><div class="m row"><button id="add">Create accounts</button></div><div class="m" id="am"></div></div>
+  <div class="cd"><h2>Students (last 30 days)</h2><div class="t"><table><tr><th>Roll</th><th>Name</th><th>Days</th><th>Morn</th><th>Aft</th><th>Periods</th><th></th></tr>
+  ${list.map(s=>`<tr><td>${esc(s.username)}</td><td>${esc(s.name)}</td><td>${s.daysPresent}/${s.workingDays}</td><td>${s.morning}</td><td>${s.afternoon}</td><td>${s.periodsAttended}/${s.periodsTotal}</td><td><button class="g" data-v="${s.id}">View</button> <button class="g" data-p="${s.id}">Password</button> <button class="g" data-d="${s.id}">Delete</button></td></tr>`).join('')||'<tr><td colspan=7 class="mu">No students yet.</td></tr>'}</table></div></div><div id="det"></div>`;
+  $('#add').onclick=async()=>{const rows=$('#bulk').value.split('\n').map(l=>l.split(',').map(x=>x.trim())).filter(r=>r[0]).map(r=>({username:r[0],name:r[1],password:r[2]}));
+    const r=await api('admin/students',{body:{rows}});$('#am').innerHTML=`<span class="ok">${r.added} created.</span> ${r.errors.length?`<span class="bad">Failed (duplicate or incomplete): ${esc(r.errors.join(', '))}</span>`:''}`;if(r.added)setTimeout(aStudents,1200)};
+  document.querySelectorAll('[data-v]').forEach(b=>b.onclick=async()=>{const r=await api('admin/students/'+b.dataset.v+'/report');
+    const d=$('#det');d.innerHTML=`<div class="cd"><h2>${esc(r.student.name)} (${esc(r.student.username)})</h2><div id="sm"></div>
+    <div class="t"><table class="m"><tr><th>Date</th><th>Morning</th><th>Afternoon</th><th>Periods</th></tr>${r.days.slice().reverse().map(x=>`<tr><td>${x.date}</td><td class="${x.morning?'ok':'bad'}">${x.morning?'Present '+fmt(x.morning):'Absent'}</td><td class="${x.afternoon?'ok':'bad'}">${x.afternoon?'Present '+fmt(x.afternoon):'Absent'}</td><td>${x.periods.map(p=>`<span class="${p.status=='present'?'ok':p.status=='outside'?'bad':'wn'}">${fmt(p.start)} ${esc(p.subject)}: ${p.status}</span>`).join('<br>')}</td></tr>`).join('')}</table></div></div>`;
+    const s=r.summary;$('#sm').innerHTML=`Days present <b>${s.daysPresent}</b>/${s.workingDays} · Morning <b>${s.morning}</b> · Afternoon <b>${s.afternoon}</b> · Periods <b>${s.periodsAttended}</b>/${s.periodsTotal}`;d.scrollIntoView()});
+  document.querySelectorAll('[data-p]').forEach(b=>b.onclick=async()=>{const p=prompt('New password');if(p){await api('admin/students/'+b.dataset.p+'/password',{body:{password:p}});alert('Password changed.')}});
+  document.querySelectorAll('[data-d]').forEach(b=>b.onclick=async()=>{if(confirm('Delete this student and all records?')){await api('admin/students/'+b.dataset.d,{method:'DELETE'});aStudents()}})}
+async function aAdmins(){
+  const l=await api('admin/admins');
+  $('#pane').innerHTML=`<div class="cd"><h2>Add another admin</h2><div class="mu">Generate a one-time code (valid 24 hours) and send it to the person. They use it on the Admin login page, "Sign up with code".</div>
+  <div class="m row"><button id="gc">Generate code</button></div><div class="m" id="cc"></div></div>
+  <div class="cd"><h2>Admins</h2><div class="t"><table><tr><th>ID</th><th>Name</th><th></th></tr>${l.map(a=>`<tr><td>${esc(a.username)}</td><td>${esc(a.name)}${a.owner?' (owner)':''}</td><td>${a.owner?'':`<button class="g" data-r="${a.id}">Remove</button>`}</td></tr>`).join('')}</table></div></div>`;
+  $('#gc').onclick=async()=>{const r=await api('admin/invites',{method:'POST',body:{}});$('#cc').innerHTML=`Code: <b style="font-size:1.4rem;letter-spacing:2px">${r.code}</b><div class="mu">Works once. Expires ${new Date(r.expires).toLocaleString()}.</div>`};
+  document.querySelectorAll('[data-r]').forEach(b=>b.onclick=async()=>{if(confirm('Remove this admin?')){await api('admin/admins/'+b.dataset.r,{method:'DELETE'});aAdmins()}})}
+async function aTimetable(){
+  const rows=await api('admin/timetable');
+  const txt=rows.map(r=>`${DAYS[r.day]} ${r.start}-${r.end} ${r.subject}`).join('\n');
+  $('#pane').innerHTML=`<div class="cd"><h2>Weekly timetable</h2><div class="mu">One period per line: Day start-end subject (24-hour). Example: Mon 09:00-09:50 Maths</div>
+  <textarea id="tt" style="min-height:260px">${esc(txt)}</textarea><div class="m row"><button id="sv">Save timetable</button></div><div class="m" id="tm"></div></div>`;
+  $('#sv').onclick=async()=>{try{const out=$('#tt').value.split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{const m=l.match(/^(\w{3})\s+(\d\d:\d\d)\s*-\s*(\d\d:\d\d)\s+(.+)$/);const d=m&&DAYS.findIndex(x=>x.toLowerCase()==m[1].toLowerCase());if(!m||d<0)throw new Error('Bad line: '+l);return{day:d,start:m[2],end:m[3],subject:m[4]}});
+    const r=await api('admin/timetable',{body:{rows:out}});$('#tm').innerHTML=`<span class="ok">Saved ${r.count} periods.</span>`}catch(e){$('#tm').innerHTML=`<span class="bad">${esc(e.message)}</span>`}}}
+async function aSettings(){
+  const s=await api('admin/settings');
+  $('#pane').innerHTML=`<div class="cd"><h2>College location</h2><div class="mu">Stand inside the college and tap the button, or type the coordinates (from Google Maps).</div>
+  <div class="m"><button id="here">Use my current location</button></div>
+  <div class="row"><div><label>Latitude</label><input id="la" value="${esc(s.lat)}"></div><div><label>Longitude</label><input id="ln" value="${esc(s.lng)}"></div><div><label>Radius (m)</label><input id="rd" type="number" value="${esc(s.radius)}"></div></div></div>
+  <div class="cd"><h2>Timings (24-hour)</h2><div class="row"><div><label>Attendance opens</label><input id="op" value="${s.open}"></div><div><label>Afternoon starts</label><input id="sp" value="${s.split}"></div><div><label>Tracking stops</label><input id="co" value="${s.cutoff}"></div></div>
+  <div class="m row"><button id="sv">Save settings</button></div><div class="m" id="sm"></div></div>
+  <div class="cd"><h2>Change admin password</h2><input id="np" type="password" placeholder="New password (min 6)"><div class="m row"><button id="cp">Change password</button></div><div class="m" id="pm"></div></div>`;
+  $('#here').onclick=async()=>{try{const p=await pos();$('#la').value=p.coords.latitude.toFixed(6);$('#ln').value=p.coords.longitude.toFixed(6);$('#sm').innerHTML=`GPS accuracy ${Math.round(p.coords.accuracy)} m. Tap Save.`}catch(e){$('#sm').innerHTML=`<span class="bad">${esc(e.message)}</span>`}};
+  $('#sv').onclick=async()=>{try{await api('admin/settings',{body:{lat:$('#la').value.trim(),lng:$('#ln').value.trim(),radius:$('#rd').value,open:$('#op').value,split:$('#sp').value,cutoff:$('#co').value}});$('#sm').innerHTML='<span class="ok">Saved.</span>'}catch(e){$('#sm').innerHTML=`<span class="bad">${esc(e.message)}</span>`}};
+  $('#cp').onclick=async()=>{try{await api('admin/password',{body:{password:$('#np').value}});$('#pm').innerHTML='<span class="ok">Password changed.</span>'}catch(e){$('#pm').innerHTML=`<span class="bad">${esc(e.message)}</span>`}}}
+
+function start(){S?(S.role=='admin'?adminShell():student()):login()}
+if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
+start();
+</script></body></html>
